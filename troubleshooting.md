@@ -124,3 +124,55 @@ Chronological entries, one per issue investigated. Commit hashes below refer to 
 * ****Related commit:**** `fix(nginx): correct app-01 upstream port and enable failover`
 
 * ****Remaining uncertainty:**** The NGINX upstream configuration is now confirmed to use the correct port (8080) for both app-01 and app-02, and failover is enabled. However, the live request to /instance still returns curl: (56) Recv failure: Connection reset by peer. Therefore, end-to-end connectivity through NGINX has not yet been confirmed and may depend on the remaining application healthcheck and binding issues
+
+---
+
+## Entry 4 - PostgreSQL data does not survive container recreation
+
+* ****Symptom:**** PostgreSQL data does not persist after the PostgreSQL container is stopped and recreated.
+
+* ****Hypothesis:**** The PostgreSQL volume is mounted to the wrong directory, while the actual PostgreSQL data directory is mounted as `tmpfs`, causing the database contents to be lost when the container is recreated.
+
+* ****Command/test:**** Inspect the PostgreSQL service in `docker-compose.yml`, specifically the `volumes` and `tmpfs` configuration.
+
+* ****Actual output:**** The PostgreSQL service mounts the named volume `postgres-data` at:
+
+  ```text
+  /var/lib/postgresql/backup
+  ```
+
+  while `/var/lib/postgresql/data` is configured as `tmpfs`.
+
+* ****Failed attempt:**** Removing only the `tmpfs` configuration was considered, but this would still leave the persistent volume mounted at `/var/lib/postgresql/backup` instead of PostgreSQL's actual data directory.
+
+* ****Root cause:**** The persistent volume was mounted to the wrong path, while the actual PostgreSQL data directory was stored in temporary filesystem storage.
+
+* ****Fix:**** Changed the PostgreSQL volume mount to:
+
+  ```yaml
+  volumes:
+    - postgres-data:/var/lib/postgresql/data
+  ```
+
+  and removed the `tmpfs` configuration for the PostgreSQL data directory.
+
+* ****Retest evidence:**** Create a record through the application, stop and remove the PostgreSQL container, recreate the services, and verify that the previously created record still exists:
+
+  ```bash
+  curl -X POST http://127.0.0.1:8080/records \
+    -H "Content-Type: application/json" \
+    -d '{"title":"persistence-test"}'
+
+  docker compose stop postgres
+  docker compose rm -f postgres
+  docker compose up -d postgres
+
+  curl http://127.0.0.1:8080/records
+  ```
+
+  The record could not be created, so the PostgreSQL stop/recreate persistence test could not yet be completed.
+
+* ****Related commit:**** `fix(compose): correct PostgreSQL volume mount for data persistence`
+
+* ****Remaining uncertainty:**** The PostgreSQL volume configuration has been corrected, but persistence cannot be verified until the application is reachable through NGINX. The current `Connection reset by peer` is consistent with the unresolved application connectivity issues documented in the subsequent entries. The persistence test must be repeated after those issues are fixed.
+
