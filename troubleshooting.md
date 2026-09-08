@@ -176,3 +176,65 @@ Chronological entries, one per issue investigated. Commit hashes below refer to 
 
 * ****Remaining uncertainty:**** The PostgreSQL volume configuration has been corrected, but persistence cannot be verified until the application is reachable through NGINX. The current `Connection reset by peer` is consistent with the unresolved application connectivity issues documented in the subsequent entries. The persistence test must be repeated after those issues are fixed.
 
+---
+
+## Entry 5 - NGINX can reach PostgreSQL/Redis directly and backend ports are published
+
+* ****Symptom:**** NGINX is attached to both the `frontend` and `backend` networks, while PostgreSQL and Redis publish their container ports to the host. This violates the required network isolation.
+
+* ****Hypothesis:**** NGINX was unnecessarily connected to the private `backend` network, and PostgreSQL/Redis port mappings were left enabled, allowing direct host access to backend services.
+
+* ****Command/test:**** Inspected `docker-compose.yml` and checked the `networks` and `ports` configuration for NGINX, PostgreSQL, and Redis.
+
+* ****Actual output:**** The current configuration contains:
+
+  ```yaml
+  postgres:
+    ports: ["127.0.0.1:15432:5432"]
+
+  redis:
+    ports: ["127.0.0.1:16379:6379"]
+
+  nginx:
+    networks: [frontend, backend]
+  ```
+
+  Therefore:
+
+  * NGINX is connected to the `backend` network.
+  * PostgreSQL exposes host port `15432`.
+  * Redis exposes host port `16379`.
+
+* ****Failed attempt:**** None. The configuration inspection directly confirmed the network-isolation violations.
+
+* ****Root cause:**** NGINX was configured to join the private `backend` network, and PostgreSQL/Redis had host port mappings that were not required for the application architecture.
+
+* ****Fix:**** Remove the PostgreSQL and Redis `ports:` entries and connect NGINX only to the `frontend` network:
+
+  ```yaml
+  nginx:
+    networks: [frontend]
+  ```
+
+  Keep the backend services on the internal `backend` network:
+
+  ```yaml
+  networks:
+    backend:
+      internal: true
+  ```
+
+* ****Retest evidence:**** After recreating the containers, run:
+
+  ```bash
+  docker inspect nginx
+  docker inspect postgres
+  docker inspect redis
+  ```
+
+  The validator should confirm that NGINX is not attached to a network ending in `backend`, and that PostgreSQL and Redis have no published host ports.
+
+* ****Related commit:**** `fix(compose): remove unnecessary port mappings and adjust NGINX network configuration for isolation`
+
+* ****Remaining uncertainty:**** The current `docker-compose.yml` still contains the identified violations, so the fix has not yet been applied or verified in the running containers. Live `docker inspect` output should be collected after applying the changes and recreating the affected containers.
+
