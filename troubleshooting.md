@@ -341,3 +341,70 @@ Chronological entries, one per issue investigated. Commit hashes below refer to 
 
 * ****Remaining uncertainty:**** None for the Docker healthcheck issue. Both app-01 and app-02 are now confirmed healthy, proving that the corrected /health healthcheck works successfully.
 
+---
+
+## Entry 8 - Application binds to loopback only
+
+* ****Symptom:**** The application containers are healthy, but NGINX cannot reliably communicate with the application instances because the application is configured to listen only on the container's loopback interface (`127.0.0.1`).
+
+* ****Hypothesis:**** `APP_HOST` is overriding the application's default bind address of `0.0.0.0`. Because the application listens only on `127.0.0.1`, connections from the NGINX container to `app-01:8080` and `app-02:8080` cannot reach the application.
+
+* ****Command/test:**** Compare the application's default host configuration in `app/server.py` with the `APP_HOST` value defined in `docker-compose.yml`.
+
+* ****Actual output:**** The shared application environment currently contains:
+
+  ```yaml
+  environment: &app-env
+    APP_HOST: "127.0.0.1"
+    APP_PORT: "8080"
+  ```
+
+  The application is therefore instructed to bind to `127.0.0.1:8080` instead of the container network interface.
+
+* ****Failed attempt:**** None.
+
+* ****Root cause:**** `APP_HOST` was incorrectly configured as `127.0.0.1`. This restricts the application to connections originating inside the same container and prevents NGINX from accessing it over the Docker network.
+
+* ****Fix:**** Changed `APP_HOST` to `0.0.0.0`:
+
+  ```yaml
+  environment: &app-env
+    APP_HOST: "0.0.0.0"
+    APP_PORT: "8080"
+  ```
+
+  The application containers do not need host port publishing because NGINX accesses them through the Docker network.
+
+* ****Retest evidence:**** Verified the application configuration with:
+
+  `cat docker-compose.yml | grep APP_HOST`
+
+  Actual output:
+
+  ```text
+  APP_HOST: "0.0.0.0"
+  ```
+
+  Both application containers are also confirmed healthy:
+
+  ```text
+  app-01   Up 2 minutes (healthy)   8080/tcp
+  app-02   Up 2 minutes (healthy)   8080/tcp
+  ```
+
+  However, testing through NGINX:
+
+  `curl -i http://127.0.0.1:8080/instance`
+
+  still returns:
+
+  ```text
+  curl: (56) Recv failure: Connection reset by peer
+  ```
+
+
+* ****Related commit:**** `fix(compose): update APP_HOST to 0.0.0.0 for proper application binding`
+
+* ****Remaining uncertainty:**** The application binding issue is confirmed fixed because `APP_HOST` is `0.0.0.0` and both application containers are healthy. However, end-to-end NGINX connectivity is still failing with `Connection reset by peer`. Therefore, the remaining issue is likely in the NGINX/container networking or NGINX listener configuration and requires further investigation before the final validator can pass.
+
+
