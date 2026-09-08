@@ -407,4 +407,58 @@ Chronological entries, one per issue investigated. Commit hashes below refer to 
 
 * ****Remaining uncertainty:**** The application binding issue is confirmed fixed because `APP_HOST` is `0.0.0.0` and both application containers are healthy. However, end-to-end NGINX connectivity is still failing with `Connection reset by peer`. Therefore, the remaining issue is likely in the NGINX/container networking or NGINX listener configuration and requires further investigation before the final validator can pass.
 
+---
+
+## Entry 9 - NGINX published port targets the wrong container port
+
+* ****Symptom:**** Requests sent to the published NGINX port failed because the host port was forwarded to container port `81`, while NGINX listens on port `80`.
+
+* ****Hypothesis:**** The NGINX service port mapping in `docker-compose.yml` was using `81` as the container-side destination port. Because NGINX listens on `80`, connections forwarded to port `81` could not reach the NGINX listener.
+
+* ****Command/test:**** Inspect the NGINX service port mapping in `docker-compose.yml` and compare the published container port with the port on which NGINX is configured to listen.
+
+* ****Actual output:**** The NGINX service originally contained:
+
+  ```yaml
+  ports:
+    - "127.0.0.1:${PUBLIC_PORT:-8080}:81"
+  ```
+
+  NGINX listens on port `80`, so the published host port was incorrectly forwarded to container port `81`.
+
+* ****Failed attempt:**** The initial configuration resulted in:
+
+  ```text
+  curl: (56) Recv failure: Connection reset by peer
+  ```
+
+* ****Root cause:**** The NGINX Docker Compose port mapping incorrectly targeted container port `81` instead of NGINX's listening port `80`.
+
+* ****Fix:**** Changed the NGINX port mapping to:
+
+  ```yaml
+  ports:
+    - "127.0.0.1:${PUBLIC_PORT:-8080}:80"
+  ```
+
+* ****Retest evidence:**** After recreating the services, the published NGINX endpoint was tested with:
+
+  `curl -i http://127.0.0.1:8080/instance`
+
+  Actual output:
+
+  ```text
+  HTTP/1.1 200 OK
+  Server: nginx/1.28.3
+  Content-Type: application/json
+  X-Instance-ID: app-01
+
+  {"instance_id":"app-01","service":"barq-api","status":"ok","version":"2.0.0"}
+  ```
+
+  The response confirms that traffic reaches NGINX successfully and is correctly proxied to `app-01`.
+
+* ****Related commit:**** `fix(compose): correct NGINX port mapping to target container port 80`
+
+* ****Remaining uncertainty:**** None for the NGINX published-port issue. The successful `HTTP/1.1 200 OK` response confirms that the host-to-NGINX port mapping and NGINX-to-application connectivity are functioning correctly.
 
