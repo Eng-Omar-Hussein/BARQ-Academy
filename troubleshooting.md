@@ -238,3 +238,61 @@ Chronological entries, one per issue investigated. Commit hashes below refer to 
 
 * ****Remaining uncertainty:**** The current `docker-compose.yml` still contains the identified violations, so the fix has not yet been applied or verified in the running containers. Live `docker inspect` output should be collected after applying the changes and recreating the affected containers.
 
+---
+
+## Entry 6 - app-02 reports the same INSTANCE_ID as app-01
+
+* ****Symptom:**** The two application instances are intended to have different instance identifiers, but `app-02` is configured with the same `INSTANCE_ID` as `app-01`. This prevents the `/instance` endpoint and round-robin test from reliably identifying which backend handled a request.
+
+* ****Hypothesis:**** The `INSTANCE_ID` value for `app-02` was copied from `app-01` and was not changed.
+
+* ****Command/test:**** Inspected the application environment configuration in `docker-compose.yml`:
+
+  ```bash
+  grep -n -A3 "INSTANCE_ID" docker-compose.yml
+  ```
+
+* ****Actual output:**** The configuration shows:
+
+  ```yaml
+  app-01:
+    environment:
+      <<: *app-env
+      INSTANCE_ID: "app-01"
+
+  app-02:
+    environment:
+      <<: *app-env
+      INSTANCE_ID: "app-01"
+  ```
+
+  Both containers therefore use `INSTANCE_ID=app-01`.
+
+* ****Failed attempt:**** None. The duplicate identifier was confirmed directly from the Compose configuration.
+
+* ****Root cause:**** The `INSTANCE_ID` value for `app-02` was incorrectly duplicated from `app-01`.
+
+* ****Fix:**** Changed the `app-02` configuration to use its own unique identifier:
+
+  ```yaml
+  app-02:
+    environment:
+      <<: *app-env
+      INSTANCE_ID: "app-02"
+  ```
+
+* ****Retest evidence:**** After recreating the application containers, run:
+
+  ```bash
+  for i in {1..12}; do
+    curl -s http://127.0.0.1:8080/instance
+    echo
+  done
+  ```
+
+  The responses should expose at least two distinct instance IDs, `app-01` and `app-02`. The validator also checks that at least two distinct IDs are observed.
+
+* ****Related commit:**** `fix(compose): update INSTANCE_ID for app-02 to ensure unique identification`
+
+* ****Remaining uncertainty:**** The configuration fix is clear, but the round-robin behavior still needs to be verified against the running containers after the application and NGINX connectivity issues are resolved.
+
