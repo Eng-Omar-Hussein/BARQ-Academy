@@ -339,5 +339,5 @@ Chronological entries, one per issue investigated. Commit hashes below refer to 
 
 * ****Related commit:**** `fix(compose): update healthcheck endpoint from /healthz to /health for application containers`
 
-* ****Remaining uncertainty:**** The healthcheck configuration has been corrected, but the final `healthy` status of both application containers still needs to be verified after the containers are recreated.
+* ****Remaining uncertainty:**** None for the Docker healthcheck issue. Both app-01 and app-02 are now confirmed healthy, proving that the corrected /health healthcheck works successfully.
 
