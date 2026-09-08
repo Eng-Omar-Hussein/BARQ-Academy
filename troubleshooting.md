@@ -296,3 +296,48 @@ Chronological entries, one per issue investigated. Commit hashes below refer to 
 
 * ****Remaining uncertainty:**** The configuration fix is clear, but the round-robin behavior still needs to be verified against the running containers after the application and NGINX connectivity issues are resolved.
 
+---
+
+## Entry 7 - Healthcheck targets a non-existent `/healthz` endpoint
+
+* ****Symptom:**** The application containers fail their Docker healthchecks because the Compose healthcheck requests `/healthz`, while the application exposes `/health`.
+
+* ****Hypothesis:**** The healthcheck path was changed or incorrectly copied, causing Docker to mark the application containers as unhealthy even though the application provides a valid health endpoint.
+
+* ****Command/test:**** Compared the health endpoint defined in `app/server.py` with the healthcheck configured in `docker-compose.yml`:
+
+  ```bash
+  grep -n "health" app/server.py
+  grep -n -A2 "healthcheck" docker-compose.yml
+  ```
+
+* ****Actual output:**** The application defines the `/health` endpoint, while the Compose healthcheck uses:
+
+  ```yaml
+  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=2)"]
+  ```
+
+  Therefore, the healthcheck requests `/healthz`, which does not exist in the application.
+
+* ****Failed attempt:**** Adding a `/healthz` alias to the application was considered, but this was rejected because the documented application endpoint `/health` should be used as the source of truth.
+
+* ****Root cause:**** The Docker Compose healthcheck contains an incorrect endpoint path: `/healthz` instead of `/health`.
+
+* ****Fix:**** Changed the healthcheck URL from `/healthz` to `/health`:
+
+  ```yaml
+  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"]
+  ```
+
+* ****Retest evidence:**** After recreating the application containers, run:
+
+  ```bash
+  docker compose ps
+  ```
+
+  Both `app-01` and `app-02` should report a `healthy` status.
+
+* ****Related commit:**** `fix(compose): update healthcheck endpoint from /healthz to /health for application containers`
+
+* ****Remaining uncertainty:**** The healthcheck configuration has been corrected, but the final `healthy` status of both application containers still needs to be verified after the containers are recreated.
+
