@@ -81,3 +81,46 @@ Chronological entries, one per issue investigated. Commit hashes below refer to 
 
 * ****Remaining uncertainty:**** The application-side configuration is confirmed correct, but `/ready` must be retested after some Entries are fixed to prove complete end-to-end readiness.
 
+---
+
+## Entry 3 - NGINX sends requests to the wrong backend port and failover is disabled
+
+* ****Symptom:**** Requests routed through NGINX to `app-01` return `502 Bad Gateway`, while `app-02` is configured to listen on port `8080`. NGINX also has `proxy_next_upstream off`, so it does not fail over to the other backend when one instance becomes unavailable.
+
+* ****Hypothesis:**** NGINX is forwarding requests to an incorrect port for `app-01`, and failover is disabled, causing requests to fail instead of being retried against the healthy backend.
+
+* ****Command/test:**** Compared the NGINX upstream configuration with the application `APP_PORT` configuration:
+
+  `grep -n -A5 "upstream" nginx/nginx.conf`
+
+  and checked the application port in `docker-compose.yml`.
+
+* ****Actual output:**** The NGINX configuration contained:
+
+  ```text
+  server app-01:8081
+  server app-02:8080
+  ```
+
+  while both application instances listen on port `8080`. NGINX also had:
+
+  ```text
+  proxy_next_upstream off
+  ```
+
+* ****Failed attempt:**** Fixing only the `app-01` port was considered, but this would not satisfy the required failure test because NGINX would still stop retrying when the selected backend becomes unavailable.
+
+* ****Root cause:**** `app-01` was configured with the wrong upstream port (`8081` instead of `8080`), and NGINX failover was explicitly disabled.
+
+* ****Fix:**** Changed the `app-01` upstream to port `8080` and enabled upstream failover:
+
+  ```nginx
+  proxy_next_upstream error timeout http_502 http_503 http_504;
+  proxy_next_upstream_tries 2;
+  ```
+
+* ****Retest evidence:**** Requests to `/instance` should be sent repeatedly through NGINX with both backends running, followed by stopping one backend and repeating the requests. The expected result is that traffic continues through the remaining healthy instance without `5xx` responses.
+
+* ****Related commit:**** `fix(nginx): correct app-01 upstream port and enable failover`
+
+* ****Remaining uncertainty:**** The NGINX upstream configuration is now confirmed to use the correct port (8080) for both app-01 and app-02, and failover is enabled. However, the live request to /instance still returns curl: (56) Recv failure: Connection reset by peer. Therefore, end-to-end connectivity through NGINX has not yet been confirmed and may depend on the remaining application healthcheck and binding issues
