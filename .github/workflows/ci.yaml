@@ -16,6 +16,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Scan repository for secrets with Gitleaks
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
@@ -44,6 +49,24 @@ jobs:
 
       - name: Build images
         run: docker compose -p ${{ env.PROJECT_NAME }} build
+
+      - name: Scan Docker images with Trivy
+        run: |
+          set -euo pipefail
+
+          docker compose -p "${PROJECT_NAME}" config --images | sort -u | while read -r image; do
+            echo "Scanning image: ${image}"
+
+            docker run --rm \
+              -v /var/run/docker.sock:/var/run/docker.sock \
+              aquasec/trivy:0.74.0 \
+              image \
+              --exit-code 1 \
+              --ignore-unfixed \
+              --vuln-type os,library \
+              --severity HIGH,CRITICAL \
+              "${image}"
+          done
 
       - name: Start stack
         run: docker compose -p ${{ env.PROJECT_NAME }} up -d
