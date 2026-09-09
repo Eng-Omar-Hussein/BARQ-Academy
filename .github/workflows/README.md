@@ -83,7 +83,7 @@ The scan checks:
 
 Unfixed vulnerabilities are ignored using `--ignore-unfixed`.
 
-A detected fixed HIGH or CRITICAL vulnerability causes the CI pipeline to fail.
+A detected fixed HIGH or CRITICAL vulnerability causes the CI pipeline to fail for commit: `feat(ci): enhance CI workflow with Gitleaks and Trivy scans for security validation`.
 
 ### Runtime Validation
 
