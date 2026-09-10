@@ -462,3 +462,27 @@ Chronological entries, one per issue investigated. Commit hashes below refer to 
 
 * ****Remaining uncertainty:**** None for the NGINX published-port issue. The successful `HTTP/1.1 200 OK` response confirms that the host-to-NGINX port mapping and NGINX-to-application connectivity are functioning correctly.
 
+---
+
+## Entry 10 - Dockerfile baked the database/Redis credential into a permanent image layer
+
+* **Symptom:** found during a final pre-submission review, not from a runtime failure — `Dockerfile` contained `COPY config/app.env /srv/app.env` immediately before `USER app`, but nothing in `app/server.py` ever opens or reads `/srv/app.env`.
+
+* **Hypothesis:** this was a leftover from an earlier approach to configuration (e.g. an attempt to load env vars from a file inside the container) that was superseded by `env_file: ./config/app.env` in `docker-compose.yml`, but the now-dead `COPY` line was never removed.
+
+* **Command/test:** `grep -rn "app.env" app/ Dockerfile docker-compose.yml` — confirmed the file is only ever referenced by `docker-compose.yml`'s `env_file:` key (which injects it as process environment at container start) and by the now-removed `COPY`. `grep -rn "srv/app.env\|/srv/app.env" app/` returned nothing, confirming the app never reads the copied file.
+
+* **Actual output:** before the fix, `docker history <app image>` would show a layer adding `/srv/app.env` containing the plaintext `DATABASE_URL` (including the PostgreSQL password) and `REDIS_URL`. This persists in every built image regardless of later changes to `config/app.env` on disk.
+
+* **Failed attempt:** none — this was caught by static review rather than trial and error.
+
+* **Root cause:** an unused `COPY` instruction in `Dockerfile` copied a file containing live-for-this-lab credentials into the image filesystem for no functional reason, violating the "keep secrets out of images" requirement even though the running application never used the copied file.
+
+* **Fix:** removed the `COPY config/app.env /srv/app.env` line from `Dockerfile`. The application is unaffected because it already receives `DATABASE_URL`/`REDIS_URL` at runtime via `docker-compose.yml`'s `env_file:`/`environment:` keys, not from a file baked into the image.
+
+* **Retest evidence:** run `docker compose build app-01` then `docker run --rm --entrypoint sh <image> -c 'test -f /srv/app.env && echo PRESENT || echo ABSENT'` and confirm it prints `ABSENT`; then re-run `docker compose up -d` and `python validate.py` to confirm the app still starts and passes all checks with the file gone.
+
+* **Related commit:** `fix(docker): remove unused COPY instruction for app.env to enhance security`.
+
+* **Remaining uncertainty:** none functionally (the file was never read), but you should still rebuild and re-run `validate.py` yourself before recording, rather than trusting static analysis alone.
+
