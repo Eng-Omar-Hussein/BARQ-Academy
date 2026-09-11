@@ -141,7 +141,8 @@ preconditions and safety checks.
 
 ## Answers to the task's questions
  
-**What failed first? What proved the cause? Which failed attempt taught you something?**
+<details>
+<summary>What failed first? What proved the cause? Which failed attempt taught you something?</summary>
 
 The first thing *found* was the Dockerfile's leftover `USER root` (Entry 1),
 by reading top-to-bottom rather than running anything — `grep -n USER
@@ -163,8 +164,10 @@ in the first place. It's a reminder not to declare a fix "done" from static
 inspection alone — each entry's "Remaining uncertainty" note exists
 precisely because retesting kept surfacing the same unresolved symptom until
 Entry 9 closed it.
+</details>
  
-**What patterns did the logs reveal? How did you avoid double-counting requests?**
+<details>
+<summary>What patterns did the logs reveal? How did you avoid double-counting requests?</summary>
 
 Two distinct failure signatures, not one: a dense "connection refused"
 cluster (11:05-11:09, every path, zero corresponding `application.log`
@@ -180,8 +183,10 @@ exactly every 120 requests) were collapsed to one occurrence each, and the
 confirmed to still be a *single* `access.log` line with one `request_id` and
 one final client-visible status — so counting distinct `request_id` values
 never double-counts a retry as two requests (`log_analysis.md` sections 1-2).
+</details>
  
-**How do requests flow? Why these ports, networks and readiness checks?**
+<details>
+<summary>How do requests flow? Why these ports, networks and readiness checks?</summary>
 
 Client -> NGINX on the published host port (8080, later 8090 live) -> one of
 the app instances over the `frontend` network -> PostgreSQL/Redis over the
@@ -196,8 +201,10 @@ trigger an unnecessary restart); `/ready` checks PostgreSQL and Redis
 specifically, because "the process is up" and "the process can actually do
 its job" are different questions, and only the second one should gate
 receiving real traffic.
+</details>
  
-**Why these timeouts, retries, restart settings and resource limits?**
+<details>
+<summary>Why these timeouts, retries, restart settings and resource limits?</summary>
 
 `proxy_connect_timeout 2s` / `proxy_read_timeout 3s` plus
 `proxy_next_upstream_tries 2` bound how long a client waits behind a dead or
@@ -213,8 +220,10 @@ the failure test. Resource limits (`decisions.md`, Decision 6) exist so one
 runaway container can't starve the shared host that everything else in this
 lab runs on; they're sized for this lab's synthetic load, not validated
 against real production traffic.
+</details>
  
-**When should validation fail? What does green CI prove, or not prove?**
+<details>
+<summary>When should validation fail? What does green CI prove, or not prove?</summary>
 
 `validate.py` should fail — and does — if: the public endpoint never becomes
 reachable within its bounded wait, any required endpoint returns the wrong
@@ -233,8 +242,10 @@ made only during the video are captured (CI runs against the two-instance,
 port-8080 `docker-compose.yml` as committed), or that a human understood
 *why* each check passes rather than just satisfying it — that's what the
 video and this documentation are for.
+</details>
  
-**Which single points of failure remain? How would you fix them in production?**
+<details>
+<summary>Which single points of failure remain? How would you fix them in production?</summary>
 
 Documented on the architecture diagram and in `security_review.md`
 (Finding 6) and `decisions.md`: a single NGINX instance (no redundant edge),
@@ -245,8 +256,10 @@ external LB/VIP, add PostgreSQL replication with automated failover (or a
 managed HA Postgres), add Redis replication/Sentinel or a managed cluster,
 and move off a single host onto an orchestrator (Kubernetes/ECS/Nomad) with
 multi-node scheduling.
+</details>
  
-**What would you improve? How did you verify AI-assisted work?**
+<details>
+<summary>What would you improve? How did you verify AI-assisted work?</summary>
 
 Concrete follow-ups are listed per-finding in `security_review.md`:
 switching `CMD` to gunicorn instead of Flask's dev server, scoping NGINX's
@@ -262,6 +275,7 @@ or rejected suggestions when they did not match the observed system. For scripts
 I ran them and checked their exit codes and outputs; for documentation and diagrams, 
 I cross-checked them against the implemented Docker Compose architecture, networking, 
 CI/CD configuration, and test results.
+</details>
 
 
 ## Architecture
