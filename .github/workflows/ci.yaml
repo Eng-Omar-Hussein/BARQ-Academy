@@ -5,7 +5,7 @@ on:
   pull_request:
 
 env:
-  URL: http://127.0.0.1:8080
+  URL: http://127.0.0.1:8090
   PROJECT_NAME: barq-assessment
 
 jobs:
