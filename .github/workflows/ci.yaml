@@ -30,7 +30,7 @@ jobs:
       
       - name: Load application port
         run: |
-          PORT=$(grep '^PORT=' .env.example | cut -d '=' -f2)
+          PORT=$(grep '^PUBLIC_PORT=' .env.example | cut -d '=' -f2)
           echo "PORT=${PORT}" >> "$GITHUB_ENV"
           echo "URL=http://127.0.0.1:${PORT}" >> "$GITHUB_ENV"
 
