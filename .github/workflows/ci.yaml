@@ -5,7 +5,6 @@ on:
   pull_request:
 
 env:
-  URL: http://127.0.0.1:8090
   PROJECT_NAME: barq-assessment
 
 jobs:
@@ -28,6 +27,12 @@ jobs:
         with:
           python-version: "3.12"
           cache: "pip"
+      
+      - name: Load application port
+        run: |
+          PORT=$(grep '^PORT=' .env.example | cut -d '=' -f2)
+          echo "PORT=${PORT}" >> "$GITHUB_ENV"
+          echo "URL=http://127.0.0.1:${PORT}" >> "$GITHUB_ENV"
 
       - name: Prepare environment
         run: cp .env.example .env
